@@ -65,6 +65,7 @@
 #include "nrf_sdh_ble.h"
 #include "nrf_ble_gatt.h"
 #include "nrf_ble_qwr.h"
+#include "nrf_drv_wdt.h"
 #include "app_timer.h"
 #include "app_util.h"
 #include "ble_nus.h"
@@ -78,6 +79,8 @@
 #include "LIS2DH12registers.h"
 #include "LIS2DH12.h"
 #include "nrf_drv_gpiote.h"
+#include "peer_manager.h"
+#include "peer_manager_handler.h"
 
 
 #if defined (UART_PRESENT)
@@ -140,6 +143,20 @@
 #define DIODE_FWD_VOLT_DROP_MILLIVOLTS  270                                     /**< Typical forward voltage drop of the diode . */
 #define ADC_RES_10BIT                   1024                                    /**< Maximum digital value for 10-bit ADC conversion. */
 
+#define LESC_DEBUG_MODE                     0  
+
+#define SEC_PARAM_BOND                      1                                       /**< Perform bonding. */
+#define SEC_PARAM_MITM                      0                                       /**< Man In The Middle protection not required. */
+#define SEC_PARAM_LESC                      0                                       /**< LE Secure Connections enabled. */
+#define SEC_PARAM_KEYPRESS                  0                                       /**< Keypress notifications not enabled. */
+#define SEC_PARAM_IO_CAPABILITIES           BLE_GAP_IO_CAPS_NONE                    /**< No I/O capabilities. */
+#define SEC_PARAM_OOB                       0                                       /**< Out Of Band data not available. */
+#define SEC_PARAM_MIN_KEY_SIZE              7                                       /**< Minimum encryption key size. */
+#define SEC_PARAM_MAX_KEY_SIZE              16                                      /**< Maximum encryption key size. */
+
+
+#define TX_POWER_LEVEL                  (8)
+
 /**@brief Macro to convert the result of ADC conversion in millivolts.
  *
  * @param[in]  ADC_VALUE   ADC result.
@@ -164,6 +181,9 @@ void vLIS2_Init (void);
 #define	TWI_SDA	            12
 
 #define TWI_INSTANCE_ID		0
+
+// Watch dog 
+nrf_drv_wdt_channel_id m_channel_id;
 
 static const nrf_drv_twi_t m_twi = NRF_DRV_TWI_INSTANCE(TWI_INSTANCE_ID);
 // Semaphore: true if TWI transfer operation has completed
@@ -243,7 +263,7 @@ void app_error_fault_handler(uint32_t id, uint32_t pc, uint32_t info)
 	    bsp_board_led_on(1);
         nrf_delay_ms(100);
         bsp_board_led_off(0);
-	    bsp_board_led_on(1);
+	    bsp_board_led_off(1);
         nrf_delay_ms(100);
     }
     NVIC_SystemReset();
@@ -253,14 +273,16 @@ void app_error_fault_handler(uint32_t id, uint32_t pc, uint32_t info)
     Uart_Printf("ASSERTION FAILED at %s:%u",
                           p_info->p_file_name,
                           p_info->line_num);
-    while(1){
+    for(int j = 0;j<10;j++){
         bsp_board_led_on(0);
 	    bsp_board_led_on(1);
         nrf_delay_ms(100);
         bsp_board_led_off(0);
-	    bsp_board_led_on(1);
+	    bsp_board_led_off(1);
         nrf_delay_ms(100);
+        
     }
+    NVIC_SystemReset();
 #endif // DEBUG
 }
 
@@ -302,6 +324,14 @@ uint8_t ub1SecDelay = 0;
 void assert_nrf_callback(uint16_t line_num, const uint8_t * p_file_name)
 {
     app_error_handler(DEAD_BEEF, line_num, p_file_name);
+}
+
+/**@brief Function for changing the tx power.
+ */
+static void tx_power_set(void)
+{
+    ret_code_t err_code = sd_ble_gap_tx_power_set(BLE_GAP_TX_POWER_ROLE_ADV, m_advertising.adv_handle, TX_POWER_LEVEL);
+    APP_ERROR_CHECK(err_code);
 }
 
 /**@brief Function for initializing the timer module.
@@ -592,8 +622,9 @@ static void ble_evt_handler(ble_evt_t const * p_ble_evt, void * p_context)
             //err_code = bsp_indication_set(BSP_INDICATE_CONNECTED);
             //APP_ERROR_CHECK(err_code);
             m_conn_handle = p_ble_evt->evt.gap_evt.conn_handle;
-            err_code = nrf_ble_qwr_conn_handle_assign(&m_qwr, m_conn_handle);
-            APP_ERROR_CHECK(err_code);
+            //err_code = nrf_ble_qwr_conn_handle_assign(&m_qwr, m_conn_handle);
+            //APP_ERROR_CHECK(err_code);
+            
             f_ble_connected = true;
             break;
 
@@ -613,14 +644,14 @@ static void ble_evt_handler(ble_evt_t const * p_ble_evt, void * p_context)
                 .rx_phys = BLE_GAP_PHY_AUTO,
                 .tx_phys = BLE_GAP_PHY_AUTO,
             };
-            err_code = sd_ble_gap_phy_update(p_ble_evt->evt.gap_evt.conn_handle, &phys);
-            APP_ERROR_CHECK(err_code);
+            //err_code = sd_ble_gap_phy_update(p_ble_evt->evt.gap_evt.conn_handle, &phys);
+            //APP_ERROR_CHECK(err_code);
         } break;
 
         case BLE_GAP_EVT_SEC_PARAMS_REQUEST:
             // Pairing not supported
-            err_code = sd_ble_gap_sec_params_reply(m_conn_handle, BLE_GAP_SEC_STATUS_PAIRING_NOT_SUPP, NULL, NULL);
-            APP_ERROR_CHECK(err_code);
+            //err_code = sd_ble_gap_sec_params_reply(m_conn_handle, BLE_GAP_SEC_STATUS_PAIRING_NOT_SUPP, NULL, NULL);
+            //APP_ERROR_CHECK(err_code);
             break;
 
         case BLE_GATTS_EVT_SYS_ATTR_MISSING:
@@ -944,6 +975,179 @@ void Uart_Printf(const char* fmt,...)
 
 /**@snippet [UART Initialization] */
 
+/**@brief Function for handling Peer Manager events.
+ *
+ * @param[in] p_evt  Peer Manager event.
+ */
+static void pm_evt_handler(pm_evt_t const * p_evt)
+{
+    pm_handler_on_pm_evt(p_evt);
+    pm_handler_flash_clean(p_evt);
+
+    //switch (p_evt->evt_id)
+    //{
+        //case PM_EVT_PEERS_DELETE_SUCCEEDED:
+            //advertising_start();
+            //break;
+
+        //default:
+            //break;
+    //}
+    ret_code_t err_code;
+
+    switch (p_evt->evt_id)
+    {
+        case PM_EVT_BONDED_PEER_CONNECTED:
+        {
+            Uart_Printf("PM_EVT_BONDED_PEER_CONNECTED\r\n");
+            //NRF_LOG_INFO("Connected to a previously bonded device.");
+        } break;
+
+        case PM_EVT_CONN_SEC_SUCCEEDED:
+        {
+            Uart_Printf("PPM_EVT_CONN_SEC_SUCCEEDED\r\n");
+            /*NRF_LOG_INFO("Connection secured: role: %d, conn_handle: 0x%x, procedure: %d.",
+                         ble_conn_state_role(p_evt->conn_handle),
+                         p_evt->conn_handle,
+                         p_evt->params.conn_sec_succeeded.procedure);*/
+        } break;
+
+        case PM_EVT_CONN_SEC_FAILED:
+        {
+            Uart_Printf("PM_EVT_CONN_SEC_FAILED\r\n");
+            /* Often, when securing fails, it shouldn't be restarted, for security reasons.
+             * Other times, it can be restarted directly.
+             * Sometimes it can be restarted, but only after changing some Security Parameters.
+             * Sometimes, it cannot be restarted until the link is disconnected and reconnected.
+             * Sometimes it is impossible, to secure the link, or the peer device does not support it.
+             * How to handle this error is highly application dependent. */
+        } break;
+
+        case PM_EVT_CONN_SEC_CONFIG_REQ:
+        {
+            Uart_Printf("PM_EVT_CONN_SEC_CONFIG_REQ\r\n");
+            // Reject pairing request from an already bonded peer.
+            //pm_conn_sec_config_t conn_sec_config = {.allow_repairing = true};
+            //pm_conn_sec_config_reply(p_evt->conn_handle, &conn_sec_config);
+        } break;
+
+        case PM_EVT_STORAGE_FULL:
+        {
+            Uart_Printf("PM_EVT_STORAGE_FULL\r\n");
+            // Run garbage collection on the flash.
+            //err_code = fds_gc();
+            //if (err_code == FDS_ERR_BUSY || err_code == FDS_ERR_NO_SPACE_IN_QUEUES)
+            //{
+                // Retry.
+            //}
+            //else
+            //{
+            //    APP_ERROR_CHECK(err_code);
+            //}
+        } break;
+
+        case PM_EVT_PEERS_DELETE_SUCCEEDED:
+        {
+            Uart_Printf("PM_EVT_PEERS_DELETE_SUCCEEDED\r\n");
+            uint32_t err_code = ble_advertising_start(&m_advertising, BLE_ADV_MODE_FAST);
+            APP_ERROR_CHECK(err_code);
+            //advertising_start(true);
+        } break;
+
+        case PM_EVT_LOCAL_DB_CACHE_APPLY_FAILED:
+        {
+            Uart_Printf("PM_EVT_LOCAL_DB_CACHE_APPLY_FAILED\r\n");
+            // The local database has likely changed, send service changed indications.
+            pm_local_database_has_changed();
+        } break;
+
+        case PM_EVT_PEER_DATA_UPDATE_FAILED:
+        {
+            // Assert.
+            Uart_Printf("PM_EVT_PEER_DATA_UPDATE_FAILED\r\n");
+            //APP_ERROR_CHECK(p_evt->params.peer_data_update_failed.error);
+        } break;
+
+        case PM_EVT_PEER_DELETE_FAILED:
+        {
+            // Assert.
+            Uart_Printf("PM_EVT_PEER_DELETE_FAILED\r\n");
+            //APP_ERROR_CHECK(p_evt->params.peer_delete_failed.error);
+        } break;
+
+        case PM_EVT_PEERS_DELETE_FAILED:
+        {
+            // Assert.
+            Uart_Printf("PM_EVT_PEERS_DELETE_FAILED\r\n");
+            //APP_ERROR_CHECK(p_evt->params.peers_delete_failed_evt.error);
+        } break;
+
+        case PM_EVT_ERROR_UNEXPECTED:
+        {
+            // Assert.
+            Uart_Printf("PM_EVT_ERROR_UNEXPECTED\r\n");
+            //APP_ERROR_CHECK(p_evt->params.error_unexpected.error);
+        } break;
+
+        case PM_EVT_CONN_SEC_START:
+        case PM_EVT_PEER_DATA_UPDATE_SUCCEEDED:
+        case PM_EVT_PEER_DELETE_SUCCEEDED:
+        case PM_EVT_LOCAL_DB_CACHE_APPLIED:
+        case PM_EVT_SERVICE_CHANGED_IND_SENT:
+        case PM_EVT_SERVICE_CHANGED_IND_CONFIRMED:
+        default:
+            Uart_Printf("default...\r\n");
+            break;
+    }
+    
+}
+
+/**@brief Clear bond information from persistent storage.
+ */
+static void delete_bonds(void)
+{
+    ret_code_t err_code;
+
+    NRF_LOG_INFO("Erase bonds!");
+
+    err_code = pm_peers_delete();
+    APP_ERROR_CHECK(err_code);
+}
+
+
+/**@brief Function for the Peer Manager initialization.
+ */
+static void peer_manager_init(void)
+{
+    ble_gap_sec_params_t sec_param;
+    ret_code_t           err_code;
+
+    err_code = pm_init();
+    APP_ERROR_CHECK(err_code);
+
+    memset(&sec_param, 0, sizeof(ble_gap_sec_params_t));
+
+    // Security parameters to be used for all security procedures.
+    sec_param.bond           = SEC_PARAM_BOND;
+    sec_param.mitm           = SEC_PARAM_MITM;
+    sec_param.lesc           = SEC_PARAM_LESC;
+    sec_param.keypress       = SEC_PARAM_KEYPRESS;
+    sec_param.io_caps        = SEC_PARAM_IO_CAPABILITIES;
+    sec_param.oob            = SEC_PARAM_OOB;
+    sec_param.min_key_size   = SEC_PARAM_MIN_KEY_SIZE;
+    sec_param.max_key_size   = SEC_PARAM_MAX_KEY_SIZE;
+    sec_param.kdist_own.enc  = 1;
+    sec_param.kdist_own.id   = 1;
+    sec_param.kdist_peer.enc = 1;
+    sec_param.kdist_peer.id  = 1;
+
+    err_code = pm_sec_params_set(&sec_param);
+    APP_ERROR_CHECK(err_code);
+
+    err_code = pm_register(pm_evt_handler);
+    APP_ERROR_CHECK(err_code);
+}
+
 
 
 /**@brief Function for initializing the Advertising functionality.
@@ -957,7 +1161,7 @@ static void advertising_init(void)
 
     init.advdata.name_type          = BLE_ADVDATA_FULL_NAME;
     init.advdata.include_appearance = false;
-    init.advdata.flags              = BLE_GAP_ADV_FLAGS_LE_ONLY_LIMITED_DISC_MODE;
+    init.advdata.flags              = BLE_GAP_ADV_FLAGS_LE_ONLY_GENERAL_DISC_MODE;
 
     init.srdata.uuids_complete.uuid_cnt = sizeof(m_adv_uuids) / sizeof(m_adv_uuids[0]);
     init.srdata.uuids_complete.p_uuids  = m_adv_uuids;
@@ -1041,13 +1245,18 @@ static void idle_state_handle(void)
     }
 }
 
-
+bool erase_bonds = true;
 /**@brief Function for starting advertising.
  */
 static void advertising_start(void)
 {
-    uint32_t err_code = ble_advertising_start(&m_advertising, BLE_ADV_MODE_FAST);
-    APP_ERROR_CHECK(err_code);
+    if(erase_bonds == true){
+        delete_bonds();
+    }else{
+        uint32_t err_code = ble_advertising_start(&m_advertising, BLE_ADV_MODE_FAST);
+        APP_ERROR_CHECK(err_code);
+    }
+    
 }
 
 static void twi_handler(nrf_drv_twi_evt_t const * p_event, void * p_context)
@@ -1317,6 +1526,14 @@ static void adc_configure(void)
     APP_ERROR_CHECK(err_code);
 }
 
+/**
+ * @brief WDT events handler.
+ */
+void wdt_event_handler(void)
+{
+
+}
+
 
 
 /**@brief Application main function.
@@ -1337,6 +1554,15 @@ int main(void)
     log_init();
     timers_init();
     buttons_leds_init(&erase_bonds);
+
+    //Configure WDT.
+    nrf_drv_wdt_config_t config = NRF_DRV_WDT_DEAFULT_CONFIG;
+    err_code = nrf_drv_wdt_init(&config, wdt_event_handler);
+    APP_ERROR_CHECK(err_code);
+    err_code = nrf_drv_wdt_channel_alloc(&m_channel_id);
+    APP_ERROR_CHECK(err_code);
+    nrf_drv_wdt_enable();
+
     power_management_init();
     ble_stack_init();
     gap_params_init();
@@ -1345,10 +1571,11 @@ int main(void)
     advertising_init();
     conn_params_init();
     create_app_timer();
+    peer_manager_init();
 
     adc_configure();
 
-    //bsp_board_led_on(0);
+    bsp_board_led_on(0);
    
     // Start execution.
     Uart_Printf("\r\nUART started...\r\n");
@@ -1375,6 +1602,8 @@ int main(void)
     start_one_second_timer();
     start_threeSec_Power_on_timer();
     start_long_push_power_on_timer();
+
+    tx_power_set();
     
     // Enter main loop.
     for (;;)
@@ -1477,12 +1706,11 @@ int main(void)
 
         }else{
 			// Put MCU into low-power mode until event occurs.
+            nrf_drv_wdt_channel_feed(m_channel_id);
 			__WFE();
 		}
     }
 }
-
-
 /**
  * @}
  */

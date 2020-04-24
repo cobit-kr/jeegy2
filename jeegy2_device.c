@@ -109,6 +109,28 @@ void test_speaker(void)
 void test_accel(void)
 {
     Uart_Printf("Test accelerometer\r\n");
+    uint8_t uID = u8LIS2_TestRead();
+    if(uID == 0x33){
+        for(int j = 0;j<3;j++){
+            bsp_board_led_on(0);
+            bsp_board_led_on(1);
+            nrf_delay_ms(100);
+            bsp_board_led_off(0);
+            bsp_board_led_off(1);
+            nrf_delay_ms(100);
+            
+        }
+    }else{
+        for( ; ; ){
+            bsp_board_led_on(0);
+            bsp_board_led_on(1);
+            nrf_delay_ms(100);
+            bsp_board_led_off(0);
+            bsp_board_led_off(1);
+            nrf_delay_ms(100);
+            
+        }
+    }
 }
 
 /**
@@ -125,7 +147,7 @@ void test_discon_device(void)
 uint32_t touch_detected(void)
 {
     uint8_t buff[10] = {0,};
-    buff[0] = 'M';
+    buff[0] = 't';
     buff[1] = SENSE_MIDDLE;
     buff[2] = 0x00;
     buff[3] = 0x00;

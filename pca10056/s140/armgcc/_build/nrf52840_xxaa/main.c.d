@@ -107,6 +107,9 @@ _build/nrf52840_xxaa/main.c.o: ../../../main.c \
  ../../../../../../components/ble/nrf_ble_gatt/nrf_ble_gatt.h \
  ../../../../../../components/ble/nrf_ble_qwr/nrf_ble_qwr.h \
  ../../../../../../components/ble/common/ble_srv_common.h \
+ ../../../../../../integration/nrfx/legacy/nrf_drv_wdt.h \
+ ../../../../../../modules/nrfx/drivers/include/nrfx_wdt.h \
+ ../../../../../../modules/nrfx/hal/nrf_wdt.h \
  ../../../../../../components/libraries/timer/app_timer.h \
  ../../../../../../components/libraries/util/app_error.h \
  ../../../../../../components/ble/ble_services/ble_nus/ble_nus.h \
@@ -132,6 +135,13 @@ _build/nrf52840_xxaa/main.c.o: ../../../main.c \
  ../../../../../../modules/nrfx/drivers/include/nrfx_gpiote.h \
  ../../../../../../modules/nrfx/hal/nrf_gpiote.h \
  ../../../../../../modules/nrfx/hal/nrf_gpio.h \
+ ../../../../../../components/ble/peer_manager/peer_manager.h \
+ ../../../../../../components/ble/peer_manager/peer_manager_types.h \
+ ../../../../../../components/ble/common/ble_gatt_db.h \
+ ../../../../../../components/ble/peer_manager/peer_database.h \
+ ../../../../../../components/ble/peer_manager/peer_manager_internal.h \
+ ../../../../../../components/ble/peer_manager/peer_manager_handler.h \
+ ../../../../../../components/ble/peer_manager/peer_manager.h \
  ../../../../../../modules/nrfx/hal/nrf_uart.h \
  ../../../../../../modules/nrfx/hal/nrf_uarte.h \
  ../../../../../../components/softdevice/s140/headers/nrf_sdm.h \
@@ -370,6 +380,12 @@ _build/nrf52840_xxaa/main.c.o: ../../../main.c \
 
 ../../../../../../components/ble/common/ble_srv_common.h:
 
+../../../../../../integration/nrfx/legacy/nrf_drv_wdt.h:
+
+../../../../../../modules/nrfx/drivers/include/nrfx_wdt.h:
+
+../../../../../../modules/nrfx/hal/nrf_wdt.h:
+
 ../../../../../../components/libraries/timer/app_timer.h:
 
 ../../../../../../components/libraries/util/app_error.h:
@@ -421,6 +437,20 @@ _build/nrf52840_xxaa/main.c.o: ../../../main.c \
 ../../../../../../modules/nrfx/hal/nrf_gpiote.h:
 
 ../../../../../../modules/nrfx/hal/nrf_gpio.h:
+
+../../../../../../components/ble/peer_manager/peer_manager.h:
+
+../../../../../../components/ble/peer_manager/peer_manager_types.h:
+
+../../../../../../components/ble/common/ble_gatt_db.h:
+
+../../../../../../components/ble/peer_manager/peer_database.h:
+
+../../../../../../components/ble/peer_manager/peer_manager_internal.h:
+
+../../../../../../components/ble/peer_manager/peer_manager_handler.h:
+
+../../../../../../components/ble/peer_manager/peer_manager.h:
 
 ../../../../../../modules/nrfx/hal/nrf_uart.h:
 

@@ -76,8 +76,8 @@ void oneSec_timer_handler(void * p_context)
 	battery_check++;
 	if(battery_check > 10){
 		battery_check = 0;
-		//err_code = nrf_drv_saadc_sample();
-		//APP_ERROR_CHECK(err_code);
+		err_code = nrf_drv_saadc_sample();
+		APP_ERROR_CHECK(err_code);
 	}
     
 	
@@ -526,12 +526,13 @@ void stop_send_3_accel_sense_timer(void)
 void battery_sense_handler(void * p_context)
 {
 	Uart_Printf("Battery sense handler\r\n");
+	
 	ret_code_t err_code;
-    err_code = nrf_drv_saadc_sample();
-    if (err_code != NRF_SUCCESS)
-	{
-		Uart_Printf("SAADC failed!\r\n");
-	}
+    //err_code = nrf_drv_saadc_sample();
+    //if (err_code != NRF_SUCCESS)
+	//{
+	//	Uart_Printf("SAADC failed!\r\n");
+	//}
 }
 
 /**@brief Function for creating battery sense timer 
